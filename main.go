@@ -13,6 +13,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/transform"
 )
 
 // FolderCount はフォルダの情報を保持します。
@@ -90,12 +93,32 @@ func (z ZipArchiveReader) ReadEntries(zipPath string) ([]FileEntry, error) {
 
 	var entries []FileEntry
 	for _, f := range r.File {
+		name := f.Name
+
+		// ZIPのフラグを見てUTF-8でない（Shift_JISの可能性が高い）と判定された場合の処理
+		if f.NonUTF8 {
+			decodedName, err := decodeShiftJIS(name)
+			if err == nil {
+				name = decodedName // 変換に成功した場合のみ上書き
+			}
+		}
+
 		entries = append(entries, FileEntry{
-			Name:  f.Name,
+			Name:  name,
 			IsDir: f.FileInfo().IsDir(),
 		})
 	}
 	return entries, nil
+}
+
+// decodeShiftJIS はShift_JISの文字列をUTF-8に変換するヘルパー関数です。(純粋関数)
+func decodeShiftJIS(s string) (string, error) {
+	decoder := japanese.ShiftJIS.NewDecoder()
+	b, _, err := transform.Bytes(decoder, []byte(s))
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 // WriteCSV は結果をCSV形式でWriterに出力します。
